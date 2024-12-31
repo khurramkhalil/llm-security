@@ -23,6 +23,7 @@ def sscore_gpu(weights, gradients, alpha):
 def bflip_gpu(weights, pos, indices):
     """GPU version of bit flip function"""
     result = weights.clone()
+    indices = indices.to(torch.long)
     weights_int8 = result[indices].to(torch.int8)
     bit_mask = torch.tensor(1 << pos, device=weights.device, dtype=torch.int8)
     flipped_values = weights_int8 ^ bit_mask
@@ -62,22 +63,22 @@ def swap_model_weights(model, layer, alpha, subsample_rate):
             # Reshape and assign back to parameter
             param.data = perturbed_weights.reshape(w1.shape)
             
-    return model
+    return model, top_k_indices
 
 def layer_ranking(immutable_model, tokenizer, alpha, subsample_rate):
     sensitivity_losses = []
 
     # Get the dictionary of layers
     # all_layer_names = [name for name, module in immutable_model.named_modules() if list(module.parameters())]
-    all_layer_names = [name for name, param in immutable_model.named_parameters()]
+    all_layer_names = [name for name, param in immutable_model.named_parameters()][:1]
     
     for layer in all_layer_names:
         # print(layer, param.shape)
         model = copy.deepcopy(immutable_model)
-        model = swap_model_weights(model, layer, alpha, subsample_rate)
+        model, top_k_indices = swap_model_weights(model, layer, alpha, subsample_rate)
 
         acc = mmlu_evaluate(model, tokenizer)
-        sensitivity_losses.append((layer, acc))
+        sensitivity_losses.append((layer, acc, top_k_indices))
         print("######################################################################################################")
         print(f"Accuracy : {acc} , with layer: {layer}")
 
