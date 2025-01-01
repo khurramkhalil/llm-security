@@ -13,8 +13,9 @@ from stable_baselines3.common.callbacks import BaseCallback
 from typing import Dict, List, Tuple, Optional
 import logging
 
-from .eval_model import mmlu_evaluate
+# from .eval_model import mmlu_evaluate, batch_mmlu_evaluate
 from attention_breaker.optim_layer_ranking import bflip_gpu
+from attention_breaker.run_mmlu import main_ as batch_mmlu_evaluate
 
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -323,7 +324,7 @@ class BitFlipEnv(gym.Env):
 
     def evaluate_model(self, model) -> float:
         """Evaluate model performance"""
-        return mmlu_evaluate(model, self.tokenizer)
+        return 1 - batch_mmlu_evaluate(model, self.tokenizer)
 
 
 

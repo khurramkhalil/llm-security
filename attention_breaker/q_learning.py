@@ -17,7 +17,7 @@ from attention_breaker.optim_layer_ranking import bflip_gpu
 # from attention_breaker.weight_subset_selection import weight_subset_selection
 # from attention_breaker.genbfa_optimization import genetic_optimization
 
-from .eval_model import mmlu_evaluate
+from .eval_model import mmlu_evaluate, batch_mmlu_evaluate
 
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -334,9 +334,9 @@ class BitFlipEnv(gym.Env):
         
         return state.astype(np.float32)
 
-    def evaluate_model(self) -> float:
+    def evaluate_model(self, model) -> float:
         """Evaluate model performance"""
-        return mmlu_evaluate(self.model, self.tokenizer)
+        return batch_mmlu_evaluate(model, self.tokenizer)
 
 
 
