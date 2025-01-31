@@ -1,17 +1,22 @@
+import os
+import logging
+from logging_config import setup_logging
+
 import torch
 import numpy as np
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-from transformers import StoppingCriteria, StoppingCriteriaList, TextIteratorStreamer
+# from transformers import StoppingCriteria, StoppingCriteriaList, TextIteratorStreamer
 
 
-import numpy as np
 from attention_breaker.optim_layer_ranking import layer_ranking
-from attention_breaker.weight_subset_selection import weight_subset_selection
-from attention_breaker.genbfa_optimization import genetic_optimization
-# from attention_breaker.rl_bfa import find_critical_bits
 from attention_breaker.q_learning_new import find_critical_bits
+# from attention_breaker.weight_subset_selection import weight_subset_selection
+# from attention_breaker.genbfa_optimization import genetic_optimization
+# from attention_breaker.rl_bfa import find_critical_bits
+# from attention_breaker.run_mmlu import main_
 
-from attention_breaker.run_mmlu import main_
+# Set up logging
+setup_logging()
 
 # Define the quantization configurTrue
 quant_config = BitsAndBytesConfig(
@@ -42,6 +47,8 @@ for param in model.parameters():
 def main():
     alpha = 0.5
     top_k = 1000
+
+    logging.info("Begin execution in main script")
     
     # Get layer sensitivity ranking
     sensitivity_losses = layer_ranking(model, tokenizer, alpha, top_k)
@@ -55,37 +62,15 @@ def main():
         top_k=top_k
     )
 
+    # Log results
+    logging.info(f"Final model performance: {results['final_performance']}")
+    logging.info(f"Most sensitive layers: {results['sensitivity_losses'][:5]}")
+
     # Access results
     print(f"Final model performance: {results['final_performance']}")
     print(f"Most sensitive layers: {results['sensitivity_losses'][:5]}")
 
 
-def main_old():
-    # Define parameters
-    alpha = 0.5
-    subsample_rate = 10
-    subsample_rates = [5, 10, 20]
-    loss_threshold = 0.10
-    top_n_layers = 2
-    max_generations = 10
-    mutation_rate = 0.1
-
-    # Step 1: Layer Ranking
-    print("Performing layer ranking...")
-    sensitivity_losses = layer_ranking(model, tokenizer, alpha, subsample_rate)
-    print("Layer ranking completed. Sensitive layers identified.")
-
-    # Step 2: Weight Subset Selection
-    print("Selecting weight subset...")
-    selected_weights = weight_subset_selection(model, tokenizer, alpha, sensitivity_losses, subsample_rates, loss_threshold, top_n_layers)
-    layer_name, weight_indices = selected_weights[0]
-    print(f"Selected weights from layer: {layer_name}, indices: {weight_indices}")
-
-    # Step 3: Genetic Optimization
-    print("Optimizing weight subset...")
-
-    best_solution = genetic_optimization(model, selected_weights[0], tokenizer,loss_threshold, max_generations, mutation_rate)
-    print(f"Optimized weight subset: {best_solution}")
 
 if __name__ == "__main__":
     main()

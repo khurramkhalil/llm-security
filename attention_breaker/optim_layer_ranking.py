@@ -1,14 +1,23 @@
-import copy
+import gc
 import os
-import random
-import numpy as np
-import torch
-
 import pdb
-from .mock_model import MockModel
-from .eval_model import mmlu_evaluate, batch_mmlu_evaluate
+import csv
+import copy
+import random
+import logging
+import numpy as np
+
+import torch
+# from .eval_model import mmlu_evaluate, batch_mmlu_evaluate
 from .run_mmlu import main_ as batch_mmlu_evaluate
 
+import logging
+import sys
+sys.path.append('..')  # Add the parent directory to the system path
+from logging_config import setup_logging
+
+# Set up logging
+setup_logging()
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -69,32 +78,42 @@ def swap_model_weights(model, layer, alpha, subsample_rate):
     return model, top_k_indices
 
 def layer_ranking(immutable_model, tokenizer, alpha, subsample_rate):
+    logging.info("Begin execution in optim_layer_ranking script")
     sensitivity_losses = []
 
     # Get the dictionary of layers
     # all_layer_names = [name for name, module in immutable_model.named_modules() if list(module.parameters())]
-    all_layer_names = [name for name, param in immutable_model.named_parameters()]
+    all_layer_names = [name for name, param in immutable_model.named_parameters()][:3]
     original_acc = batch_mmlu_evaluate(immutable_model, tokenizer)
     print(f"########### Original Accuracy : {original_acc} ################################################")
     
     for layer in all_layer_names:
-        # print(layer, param.shape)
-        model = copy.deepcopy(immutable_model)
-        # model.load_state_dict(immutable_model.state_dict())
-        model, top_k_indices = swap_model_weights(model, layer, alpha, subsample_rate)
+        # Use no_grad to reduce memory usage
+        with torch.no_grad():
+            model = copy.deepcopy(immutable_model)
+            model, top_k_indices = swap_model_weights(model, layer, alpha, subsample_rate)
         
-        # acc = mmlu_evaluate(model, tokenizer)
-        acc = batch_mmlu_evaluate(model, tokenizer)
-        sensitivity_losses.append((layer, acc, top_k_indices))
-        # pdb.set_trace()
-        print("######################################################################################################")
-        print(f"################################ Accuracy : {acc} , with layer: {layer}, Top Indices: {top_k_indices[:3]}")
+            acc = batch_mmlu_evaluate(model, tokenizer)
+            sensitivity_losses.append((layer, acc, top_k_indices))
+            print("######################################################################################################")
+            print(f"################################ Accuracy : {acc} , with layer: {layer}, Top Indices: {top_k_indices.tolist()[:3]}")
         
-        del model  # Delete the model
-        torch.cuda.empty_cache()  # Free up GPU memory
+            # Explicitly delete the model and clear cache
+            del model
+            gc.collect()  # Call garbage collector
+            torch.cuda.empty_cache()
 
     # [param for name, param in model.named_parameters() if name==layer][0].flatten()[top_k_indices] 40159695   model.embed_tokens.weight  [0.1496    1]
     # sensitivity_losses.sort(key=lambda x: x[1], reverse=True)
     sensitivity_losses.sort(key=lambda x: x[1])
-    torch.save(sensitivity_losses, "sensitivity_losses.pth")
+    # Specify the CSV file path
+    csv_file_path = 'layers_sensitivity.csv'
+
+    # Write the list of lists to a CSV file
+    with open(csv_file_path, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerows(sensitivity_losses)
+
+    logging.info("Execution in optim_layer_ranking completed")
+
     return sensitivity_losses
