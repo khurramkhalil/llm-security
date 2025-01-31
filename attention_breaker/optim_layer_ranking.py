@@ -88,9 +88,13 @@ def layer_ranking(immutable_model, tokenizer, alpha, subsample_rate):
         sensitivity_losses.append((layer, acc, top_k_indices))
         # pdb.set_trace()
         print("######################################################################################################")
-        print(f"Accuracy : {acc} , with layer: {layer}")
-    
+        print(f"################################ Accuracy : {acc} , with layer: {layer}, Top Indices: {top_k_indices[:3]}")
+        
+        del model  # Delete the model
+        torch.cuda.empty_cache()  # Free up GPU memory
+
     # [param for name, param in model.named_parameters() if name==layer][0].flatten()[top_k_indices] 40159695   model.embed_tokens.weight  [0.1496    1]
     # sensitivity_losses.sort(key=lambda x: x[1], reverse=True)
     sensitivity_losses.sort(key=lambda x: x[1])
+    torch.save(sensitivity_losses, "sensitivity_losses.pth")
     return sensitivity_losses

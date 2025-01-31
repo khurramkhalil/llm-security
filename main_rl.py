@@ -41,10 +41,10 @@ for param in model.parameters():
 
 def main():
     alpha = 0.5
-    subsample_rate = 10
+    top_k = 1000
     
     # Get layer sensitivity ranking
-    sensitivity_losses = layer_ranking(model, tokenizer, alpha, subsample_rate)
+    sensitivity_losses = layer_ranking(model, tokenizer, alpha, top_k)
 
     # Find critical bits
     results = find_critical_bits(
@@ -52,7 +52,7 @@ def main():
         model=model,
         tokenizer=tokenizer,
         alpha=alpha,
-        subsample_rate=subsample_rate
+        top_k=top_k
     )
 
     # Access results

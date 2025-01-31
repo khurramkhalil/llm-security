@@ -13,6 +13,8 @@ from stable_baselines3.common.callbacks import BaseCallback
 from typing import Dict, List, Tuple, Optional
 import logging
 
+import pdb
+
 # from .eval_model import mmlu_evaluate, batch_mmlu_evaluate
 from attention_breaker.optim_layer_ranking import bflip_gpu
 from attention_breaker.run_mmlu import main_ as batch_mmlu_evaluate
@@ -124,9 +126,9 @@ class BitFlipEnv(gym.Env):
                  model: torch.nn.Module,
                  tokenizer,
                  sensitive_layers: List[Tuple[str, float, float]],
+                 top_k: int = 100,
                  max_steps: int = 50,
                  history_size: int = 3,
-                 top_k: int = 1000,
                  exploration_rate: float = 0.05):
         super().__init__()
         
@@ -135,8 +137,7 @@ class BitFlipEnv(gym.Env):
         self.top_k = top_k
         self.exploration_rate = exploration_rate
 
-        self.immutable_model = copy.deepcopy(model)
-        self.model = model
+        self.immutable_model = model
         self.tokenizer = tokenizer
         self.max_steps = max_steps
         self.history_size = history_size
@@ -189,7 +190,7 @@ class BitFlipEnv(gym.Env):
         super().reset(seed=seed)  # Initialize self.np_random
         
         # Restore original weights
-        self.model = self.immutable_model            
+        # self.model = copy.deepcopy(self.immutable_model)
         self.steps = 0
         self.current_performance = self.original_performance
         self.action_history = []
@@ -211,7 +212,7 @@ class BitFlipEnv(gym.Env):
     def _compute_layer_stats(self) -> Dict[str, Dict[str, float]]:
         stats = {}
         for layer_name, _, _ in self.sensitive_layers:
-            param = dict(self.model.named_parameters())[layer_name]
+            param = dict(self.immutable_model.named_parameters())[layer_name]
             param_float = param.to(torch.float32)
             stats[layer_name] = {
                 'mean': param_float.mean().item(),
@@ -235,19 +236,22 @@ class BitFlipEnv(gym.Env):
         bit_pos = 0
         
         # Perform bit flip
-        self.model = copy.deepcopy(self.immutable_model)
-        self.model = self._flip_bit(self.model, layer_name, weight_idx, bit_pos)
+        model = copy.deepcopy(self.immutable_model)
+        model = self._flip_bit(model, layer_name, weight_idx, bit_pos)
         
         # Evaluate new performance
-        new_performance = self.evaluate_model(self.model)
+        new_performance = self.evaluate_model(model)
         performance_drop = self.original_performance - new_performance
+
+        del model  # Delete the model
+        torch.cuda.empty_cache()  # Free up GPU memory        
         
         # Calculate reward
         reward = performance_drop
         
         self.current_performance = new_performance
         self.action_history.append((layer_idx, index_selection))
-        
+        # [param for name, param in self.immutable_model.named_parameters() if name==layer_name][0].flatten()[weight_idx]'
         # Determine termination
         terminated = (self.current_performance < 0.2) or (self.steps >= self.max_steps)
         truncated = False
@@ -285,7 +289,7 @@ class BitFlipEnv(gym.Env):
         super().reset(seed=seed)  # Initialize self.np_random
         
         # Restore original weights
-        self.model = self.immutable_model            
+        # self.model = copy.deepcopy(self.immutable_model)
         self.steps = 0
         self.current_performance = self.original_performance
         self.action_history = []
@@ -332,6 +336,7 @@ def train_bit_flip_agent(
     model: torch.nn.Module,
     tokenizer,
     sensitivity_losses: List[Tuple[str, float]],
+    top_k: int = 100,
     total_timesteps: int = 100000,
     learning_rate: float = 3e-4,
     batch_size: int = 64
@@ -349,7 +354,7 @@ def train_bit_flip_agent(
         }
     )
     
-    env = BitFlipEnv(model, tokenizer, sensitivity_losses)
+    env = BitFlipEnv(model, tokenizer, sensitivity_losses, top_k)
     
     agent = PPO(
         "MlpPolicy",
@@ -401,7 +406,7 @@ def find_critical_bits(
     model: torch.nn.Module,
     tokenizer,
     alpha: float = 0.5,
-    subsample_rate: int = 10
+    top_k: int = 100
 ) -> Dict:
     """Main function to find critical bits using RL"""
     
@@ -414,6 +419,7 @@ def find_critical_bits(
         model,
         tokenizer,
         sensitivity_losses,
+        top_k
         # exp_name=f"bit_flip_alpha{alpha}_sr{subsample_rate}"
     )
     
