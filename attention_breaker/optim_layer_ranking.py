@@ -77,31 +77,24 @@ def swap_model_weights(model, layer, alpha, subsample_rate):
             
     return model, top_k_indices
 
-def layer_ranking(immutable_model, tokenizer, alpha, subsample_rate):
+def layer_ranking(immutable_model, tokenizer, alpha, subsample_rate, layer):
     logging.info("Begin execution in optim_layer_ranking script")
     sensitivity_losses = []
 
-    # Get the dictionary of layers
-    # all_layer_names = [name for name, module in immutable_model.named_modules() if list(module.parameters())]
-    all_layer_names = [name for name, param in immutable_model.named_parameters()][:3]
-    original_acc = batch_mmlu_evaluate(immutable_model, tokenizer)
-    print(f"########### Original Accuracy : {original_acc} ################################################")
+    # Use no_grad to reduce memory usage
+    with torch.no_grad():
+        model = copy.deepcopy(immutable_model)
+        model, top_k_indices = swap_model_weights(model, layer, alpha, subsample_rate)
     
-    for layer in all_layer_names:
-        # Use no_grad to reduce memory usage
-        with torch.no_grad():
-            model = copy.deepcopy(immutable_model)
-            model, top_k_indices = swap_model_weights(model, layer, alpha, subsample_rate)
-        
-            acc = batch_mmlu_evaluate(model, tokenizer)
-            sensitivity_losses.append((layer, acc, top_k_indices))
-            print("######################################################################################################")
-            print(f"################################ Accuracy : {acc} , with layer: {layer}, Top Indices: {top_k_indices.tolist()[:3]}")
-        
-            # Explicitly delete the model and clear cache
-            del model
-            gc.collect()  # Call garbage collector
-            torch.cuda.empty_cache()
+        acc = batch_mmlu_evaluate(model, tokenizer)
+        sensitivity_losses.append((layer, acc, top_k_indices.tolist()))
+        print("######################################################################################################")
+        print(f"################################ Accuracy : {acc} , with layer: {layer}, Top Indices: {top_k_indices.tolist()}")
+    
+        # Explicitly delete the model and clear cache
+        del model
+        gc.collect()  # Call garbage collector
+        torch.cuda.empty_cache()
 
     # [param for name, param in model.named_parameters() if name==layer][0].flatten()[top_k_indices] 40159695   model.embed_tokens.weight  [0.1496    1]
     # sensitivity_losses.sort(key=lambda x: x[1], reverse=True)

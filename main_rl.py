@@ -1,4 +1,6 @@
 import os
+import csv
+import ast
 import logging
 from logging_config import setup_logging
 
@@ -14,6 +16,9 @@ from attention_breaker.q_learning_new import find_critical_bits
 # from attention_breaker.genbfa_optimization import genetic_optimization
 # from attention_breaker.rl_bfa import find_critical_bits
 # from attention_breaker.run_mmlu import main_
+
+from attention_breaker.qwen_rl_env import BitFlipEnv
+from attention_breaker.qwen_q_table import train_rl_agent
 
 # Set up logging
 setup_logging()
@@ -51,8 +56,35 @@ def main():
     logging.info("Begin execution in main script")
     
     # Get layer sensitivity ranking
-    sensitivity_losses = layer_ranking(model, tokenizer, alpha, top_k)
+    # sensitivity_losses = layer_ranking(model, tokenizer, alpha, top_k)
 
+    sensitivity_losses = []
+
+    # Specify the CSV file path
+    csv_file_path = 'output.csv'
+
+    # Read the CSV file
+    with open(csv_file_path, mode='r', newline='') as file:
+        reader = csv.reader(file)
+        for row in reader:
+            row[-1] = ast.literal_eval(row[-1])
+            sensitivity_losses.append(row)
+
+    top_layer, _, top_k_indices = sensitivity_losses[0]  # Choose the most sensitive layer
+
+    env = BitFlipEnv(model, tokenizer, top_layer, top_k_indices)
+    agent = train_rl_agent(env)
+
+    # After training, you can extract the sequence of bit flips that resulted in the highest reward
+    optimal_bit_flips = []
+    state = env.reset()
+    done = False
+    while not done:
+        action = np.argmax(agent.q_table[tuple(state)])
+        optimal_bit_flips.append(action)
+        state, _, done = env.step(action)
+
+    print("Optimal bit flips:", optimal_bit_flips)
     # Find critical bits
     results = find_critical_bits(
         sensitivity_losses=sensitivity_losses,

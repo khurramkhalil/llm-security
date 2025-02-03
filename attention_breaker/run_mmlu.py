@@ -169,11 +169,13 @@ def batch_split(prompts, batch_num):
 def batch_infer(model, tokenizer, prompts):
     batch_size = 8
     answers = []
-    for batch_input in tqdm(batch_split(prompts, batch_size)):
-        encode_inputs = prepare_input(tokenizer, batch_input)
-        outputs = model.generate(**encode_inputs, max_new_tokens=1)
-        answers.extend(tokenizer.batch_decode(outputs, skip_special_tokens=True))
-    answers = [answer[-1] for answer in answers]
+    with torch.no_grad():
+        for batch_input in tqdm(batch_split(prompts, batch_size)):
+            encode_inputs = prepare_input(tokenizer, batch_input)
+            outputs = model.generate(**encode_inputs, max_new_tokens=1)
+            answers.extend(tokenizer.batch_decode(outputs, skip_special_tokens=True))
+        answers = [answer[-1] for answer in answers]
+    torch.cuda.empty_cache()
     return answers
 
 def main_(model: str, tokenizer: str,):
